@@ -1,0 +1,135 @@
+// tkAdjustClippingPlane.0.1.mel
+// Thomas Kutschera
+// okt 2019
+
+global proc cHelp()
+{
+	if( `window -exists win_tkAdjustClippingPlanesHelp` )
+	deleteUI win_tkAdjustClippingPlanesHelp;
+
+	$myWindow = `window -title ("City Builder Help") -s 1 -wh 200 200 win_tkAdjustClippingPlanesHelp`;
+	
+	columnLayout -adj 1;
+		text -al "left" "Help\n\nReplace Selected Block With Alembic Publishes:\n--------------------------------------------------------------\nReplaces the buildings of the the blocks with alembics of roofs or walls.\n\n- how to:	1. Set correct project, task where to find the builing publishes.\n		    Default would be `mercantileBuildingsLow`.\n		2. Check `gpuQuad` if an quad publish exists.\n		3. Select the top group, eg buildings_low_GRP\n		4. Hit `Low` for Lowres buildings, `Proxy` for proxypublishes (PRX), \n		    `Prop` for walls and roofs (no longer needed), `Walls` for the walls. \n		    and `Roof` for the roofs only (these should be quads!).\n			  \nPrepare Blocks For Export: \n--------------------------------------------------------------\nPrepares the blocks for later use in mash. \nImports references, solves instances, renames all objects unique, \nadds prefixes (lowAsset, low, rof, wal). \n\n- how to:	1. Select the top grp of the blocks only.\n		2. Choose the correct asset prefix: if the buildings are assets, use `lowAsset`, if you have assets.\n		    If you used alembics (low, rof or wal) choose `low`, `wal `or `rof`.\n		3. Export the top group for later use in mash.\n\nSelect And Bake:\n--------------------------------------------------------------\n- Bake your Mash network, delete all geos and unused groups, replaces every group with \n  an instance of the chosen asset publish from the top list.  \n  \n- how to:	1. Check if your publish is in your file! \n		    If not set project and task, check for the latest publish, \n		    type in a new namespace and hit `Read Asset` to reference the publishversion in your scene. \n		2. Select the instancer you want to bake and hit `1. Bake MASH`.\n		3. Select the top group of the baked group and hit `2. Keep Only Dags`.\n		    Check if step 2 is necessary for props as well!\n		4. Select the top group of the baked group and hit `3. Replace With Instance`.\n		    The script is looking for objects with the matching namespace from the top list! \n		    So be sure it´s in your scene, otherwise read in your publish...\n		  \nExport Selection As ABC:\n--------------------------------------------------------------\nExports the selected groups as alembics without triangulation.\n\n- how to:	1. Set the scene name.\n		2. Select the groups you want to export as abc, \n		    eg. building_AA_low_GRP, building_AB_low_GRP, building_AE_low_GRP...\n		3. `Export Selection As ABC`.\n		  ";
+	
+	showWindow $myWindow;
+}
+
+global proc cShrinkWin(string $windowToClose)
+{
+	window -e -h 69 $windowToClose;
+	window -e -w 335 $windowToClose;
+}
+
+global proc cClippingPlanes(string $attr)
+{
+	$cams 		= `ls -type "camera"`;
+	$clipValue 	= `getAttr ($cams[0] + "." + $attr)`;
+	floatField -e -v $clipValue $attr;
+}
+
+global proc cMult(string $attr, float $mult)
+{
+	$cams 		= `ls -type "camera"`;
+	$clipValue 	= `getAttr ($cams[0] + "." + $attr)`;
+	$clipValue  = $clipValue * $mult;
+	floatField -e -v $clipValue $attr;
+	print $clipValue;
+	
+	for ($cam in $cams)
+		setAttr ($cam + "." + $attr) $clipValue;
+
+	cAdjustPositions;
+	
+}
+
+global proc cAdjustPositions()
+{
+	string $cam;
+	$cams 	= `ls -type "camera"`;
+
+	for ($cam in $cams)
+	{	
+		$ortho 	= `getAttr ($cam + ".orthographic")`;
+		if ($ortho == 1)
+		{
+			$dag = `listRelatives -p $cam`;
+			$pos = `getAttr ($dag[0] + ".translate")`;
+			if (`startsWith $cam "top"`)
+			{
+				print "\ntop:\n";
+				print $cam;
+				$clipValue = `getAttr ($cam + ".farClipPlane")`;
+				setAttr ($dag[0] + ".ty") ($clipValue / 2.0);
+
+			}			
+			if (`startsWith $cam "side"`)
+			{
+				print "\nside:\n";
+				print $cam;
+				$clipValue = `getAttr ($cam + ".farClipPlane")`;
+				setAttr ($dag[0] + ".tx") ($clipValue / 2.0);
+			}
+			if (`startsWith $cam "front"`)
+			{
+				print "\nfront:\n";
+				print $cam;
+				$clipValue = `getAttr ($cam + ".farClipPlane")`;
+				setAttr ($dag[0] + ".tz") ($clipValue / 2.0);
+			}
+		}
+	}
+
+}
+
+
+
+///////////////////// window ////////////////////////////
+global proc tkAdjustClippingPlanesHelper()
+{
+
+	$ver = "v0.1";
+	int $windowStartHeight = 50;
+	int $windowStartWidth = 450;
+	int $bh1 = 18;
+	int $bh2 = 22;
+
+	if( `window -exists win_tkAdjustClippingPlanesHelper` )
+		deleteUI win_tkAdjustClippingPlanesHelper;
+
+	$myWindow = `window -title ("Adjust Clipping Planes " + $ver) -s 1 -wh $windowStartHeight $windowStartWidth win_tkAdjustClippingPlanesHelper`;
+
+		/* -------------------- windowStart ------------------------- */
+
+	columnLayout -adj 1;		
+	{
+		columnLayout -adj 1;
+			frameLayout -l "Clipping Planes" -cll 0 -cl 0 -cc "cShrinkWin(\"win_tkAdjustClippingPlanesHelper\")" flHelper; 	
+			{
+				columnLayout -adj 1;	
+					rowColumnLayout -nc 5 -cw 1 110 -cw 2 60 -cw 3 30 -cw 4 105 -cw 5 30;	
+						button -h $bh1  -l "Clipping Planes" -c "cClippingPlanes(\"nearClipPlane\"); cClippingPlanes(\"farClipPlane\"); ";
+						text "Near";
+						button -h $bh1 -bgc .45 .3 .3 -l "/ 10" -c "cMult(\"nearClipPlane\", .1)";
+						floatField -pre 3 -ed 0 nearClipPlane;
+						button -h $bh1 -bgc .3 .45 .3 -l "* 10" -c "cMult(\"nearClipPlane\", 10)";
+						
+						text " ";
+						text "Far";
+						button -h $bh1 -bgc .45 .3 .3 -l "/ 10" -c "cMult(\"farClipPlane\", .1)";
+						floatField -pre 3 -ed 0 farClipPlane;
+						button -h $bh1 -bgc .3 .45 .3 -l "* 10" -c "cMult(\"farClipPlane\", 10)";
+						setParent ..;
+
+					button -h $bh1 -bgc .3 .45 .3 -l "Adjust Cam Positions" -c "cAdjustPositions";
+
+
+			}
+
+	// button -h $bh1 -l "Help" -c "cHelp";
+	showWindow $myWindow;
+	}
+}
+
+tkAdjustClippingPlanesHelper;
+cShrinkWin("win_tkAdjustClippingPlanesHelper");
